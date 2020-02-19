@@ -17,8 +17,10 @@ import (
 
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/resolver"
 
 	reflectpb "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
 )
@@ -312,6 +314,9 @@ func (b *Requester) newClientConn(withStatsHandler bool) (*grpc.ClientConn, erro
 	if b.config.hasLog {
 		b.config.log.Debugw("Creating client connection", "options", opts)
 	}
+
+	resolver.SetDefaultScheme("dns")
+	opts = append(opts, grpc.WithBalancerName(roundrobin.Name))
 
 	// create client connection
 	return grpc.DialContext(ctx, b.config.host, opts...)
