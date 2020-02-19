@@ -5,15 +5,22 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/dynamic"
 	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/metadata"
 )
+
+type key int
+
+const retryCountContextKey key = 0
+const numRetries int = 3
 
 // Worker is used for doing a single stream of requests in parallel
 type Worker struct {
@@ -36,7 +43,7 @@ type Worker struct {
 
 func (w *Worker) runWorker() error {
 	time.Sleep(time.Duration(rand.Intn(40)) * time.Second)
-	fmt.Printf("Starting worker %s", w.workerID)
+	fmt.Printf("Starting worker %s\n", w.workerID)
 
 	var throttle <-chan time.Time
 	if w.config.qps > 0 {
@@ -142,7 +149,24 @@ func (w *Worker) makeRequest() error {
 		if w.mtd.IsServerStreaming() {
 			_ = w.makeServerStreamingRequest(&ctx, inputs[inputIdx])
 		} else {
-			res, resErr := w.stub.InvokeRpc(ctx, w.mtd, inputs[inputIdx])
+			var res proto.Message
+			var resErr error
+
+			shouldInvoke := true
+			retryCount := 0
+
+			for shouldInvoke && retryCount <= numRetries {
+				// fmt.Printf("Invoking with retry %d\n", retryCount)
+				if retryCount > 0 {
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				newCtx := context.WithValue(ctx, retryCountContextKey, retryCount)
+				res, resErr = w.stub.InvokeRpc(newCtx, w.mtd, inputs[inputIdx])
+
+				shouldInvoke = resErr != nil && strings.Contains(resErr.Error(), "ResourceExhausted")
+				retryCount++
+			}
 
 			if w.config.hasLog {
 				w.config.log.Debugw("Received response", "workerID", w.workerID, "call type", callType,

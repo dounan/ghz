@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 )
@@ -49,12 +50,15 @@ func (c *statsHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 				st = s.Code().String()
 			}
 
-			c.results <- &callResult{rs.Error, st, duration, rs.EndTime}
+			retryCount := ctx.Value(retryCountContextKey)
+			if s.Code() != codes.ResourceExhausted || retryCount == numRetries {
+				c.results <- &callResult{rs.Error, st, duration, rs.EndTime}
 
-			if c.hasLog {
-				c.log.Debugw("Received RPC Stats",
-					"statsID", c.id, "code", st, "error", rs.Error,
-					"duration", duration, "stats", rs)
+				if c.hasLog {
+					c.log.Debugw("Received RPC Stats",
+						"statsID", c.id, "code", st, "error", rs.Error,
+						"duration", duration, "stats", rs)
+				}
 			}
 		}
 	}
