@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"sync/atomic"
 	"time"
 
@@ -34,6 +35,9 @@ type Worker struct {
 }
 
 func (w *Worker) runWorker() error {
+	time.Sleep(time.Duration(rand.Intn(40)) * time.Second)
+	fmt.Printf("Starting worker %s", w.workerID)
+
 	var throttle <-chan time.Time
 	if w.config.qps > 0 {
 		throttle = time.Tick(w.qpsTick)
