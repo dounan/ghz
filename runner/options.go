@@ -16,6 +16,14 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
+// RetryConfig represents the request Configs for retry logic
+type RetryConfig struct {
+	InitialBackoff    time.Duration
+	MaxBackoff        time.Duration
+	BackoffMultiplier uint
+	MaxAttempts       uint
+}
+
 // RunConfig represents the request Configs
 type RunConfig struct {
 	// call settings
@@ -64,9 +72,10 @@ type RunConfig struct {
 	log    Logger
 
 	// misc
-	name string
-	cpus int
-	tags []byte
+	name  string
+	cpus  int
+	tags  []byte
+	retry RetryConfig
 }
 
 // Option controls some aspect of run
@@ -477,6 +486,13 @@ func WithLogger(log Logger) Option {
 		o.log = log
 		o.hasLog = true
 
+		return nil
+	}
+}
+
+func WithRetry(c RetryConfig) Option {
+	return func(o *RunConfig) error {
+		o.retry = c
 		return nil
 	}
 }

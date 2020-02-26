@@ -30,10 +30,12 @@ const maxResult = 1000000
 
 // result of a call
 type callResult struct {
-	err       error
-	status    string
-	duration  time.Duration
-	timestamp time.Time
+	err         error
+	status      string
+	duration    time.Duration
+	timestamp   time.Time
+	attempt     uint
+	maxAttempts uint
 }
 
 // Requester is used for doing the requests
@@ -304,6 +306,7 @@ func (b *Requester) newClientConn(withStatsHandler bool) (*grpc.ClientConn, erro
 			results: b.results,
 			hasLog:  b.config.hasLog,
 			log:     b.config.log,
+			retry:   b.config.retry,
 		}
 
 		b.handlers = append(b.handlers, sh)

@@ -51,6 +51,11 @@ type Options struct {
 
 	CPUs int    `json:"CPUs"`
 	Name string `json:"name,omitempty"`
+
+	InitialBackoff    time.Duration `json:"initial-backoff"`
+	MaxBackoff        time.Duration `json:"max-backoff"`
+	BackoffMultiplier uint          `json:"backoff-multiplier"`
+	MaxAttempts       uint          `json:"max-attempts"`
 }
 
 // Report holds the data for the full test
@@ -110,10 +115,12 @@ type Bucket struct {
 
 // ResultDetail data for each result
 type ResultDetail struct {
-	Timestamp time.Time     `json:"timestamp"`
-	Latency   time.Duration `json:"latency"`
-	Error     string        `json:"error"`
-	Status    string        `json:"status"`
+	Timestamp   time.Time     `json:"timestamp"`
+	Latency     time.Duration `json:"latency"`
+	Error       string        `json:"error"`
+	Status      string        `json:"status"`
+	Attempt     uint          `json:"attempt"`
+	MaxAttempts uint          `json:"max-attempts"`
 }
 
 func newReporter(results chan *callResult, c *RunConfig) *Reporter {
@@ -140,17 +147,19 @@ func (r *Reporter) Run() {
 		r.totalLatenciesSec += res.duration.Seconds()
 		r.statusCodeDist[res.status]++
 
-		if res.err != nil {
+		if res.err != nil && res.maxAttempts == res.attempt {
 			errStr = res.err.Error()
 			r.errorDist[errStr]++
 		}
 
 		if len(r.details) < maxResult {
 			r.details = append(r.details, ResultDetail{
-				Latency:   res.duration,
-				Timestamp: res.timestamp,
-				Status:    res.status,
-				Error:     errStr,
+				Latency:     res.duration,
+				Timestamp:   res.timestamp,
+				Status:      res.status,
+				Error:       errStr,
+				Attempt:     res.attempt,
+				MaxAttempts: res.maxAttempts,
 			})
 		}
 	}
@@ -169,29 +178,33 @@ func (r *Reporter) Finalize(stopReason StopReason, total time.Duration) *Report 
 		StatusCodeDist: r.statusCodeDist}
 
 	rep.Options = Options{
-		Host:          r.config.host,
-		Proto:         r.config.proto,
-		Protoset:      r.config.protoset,
-		ImportPaths:   r.config.importPaths,
-		Call:          r.config.call,
-		CACert:        r.config.cacert,
-		Cert:          r.config.cert,
-		Key:           r.config.key,
-		CName:         r.config.cname,
-		SkipTLS:       r.config.skipVerify,
-		Insecure:      r.config.insecure,
-		Authority:     r.config.authority,
-		Total:         uint(r.config.n),
-		Concurrency:   uint(r.config.c),
-		QPS:           uint(r.config.qps),
-		Connections:   uint(r.config.nConns),
-		Duration:      r.config.z,
-		Timeout:       r.config.timeout,
-		DialTimeout:   r.config.dialTimeout,
-		KeepaliveTime: r.config.keepaliveTime,
-		Binary:        r.config.binary,
-		CPUs:          r.config.cpus,
-		Name:          r.config.name,
+		Host:              r.config.host,
+		Proto:             r.config.proto,
+		Protoset:          r.config.protoset,
+		ImportPaths:       r.config.importPaths,
+		Call:              r.config.call,
+		CACert:            r.config.cacert,
+		Cert:              r.config.cert,
+		Key:               r.config.key,
+		CName:             r.config.cname,
+		SkipTLS:           r.config.skipVerify,
+		Insecure:          r.config.insecure,
+		Authority:         r.config.authority,
+		Total:             uint(r.config.n),
+		Concurrency:       uint(r.config.c),
+		QPS:               uint(r.config.qps),
+		Connections:       uint(r.config.nConns),
+		Duration:          r.config.z,
+		Timeout:           r.config.timeout,
+		DialTimeout:       r.config.dialTimeout,
+		KeepaliveTime:     r.config.keepaliveTime,
+		Binary:            r.config.binary,
+		CPUs:              r.config.cpus,
+		Name:              r.config.name,
+		InitialBackoff:    r.config.retry.InitialBackoff,
+		MaxBackoff:        r.config.retry.MaxBackoff,
+		BackoffMultiplier: r.config.retry.BackoffMultiplier,
+		MaxAttempts:       r.config.retry.MaxAttempts,
 	}
 
 	_ = json.Unmarshal(r.config.data, &rep.Options.Data)
