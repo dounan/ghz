@@ -19,8 +19,12 @@ import (
 
 type key int
 
-const retryCountContextKey key = 0
-const numRetries int = 3
+const attemptContextKey key = 0
+
+// const initialBackoffMs = 50
+// const maxBackoffMs = 500
+// const backoffMultiplier = 2
+// const maxAttempts int = 9
 
 // Worker is used for doing a single stream of requests in parallel
 type Worker struct {
@@ -42,8 +46,9 @@ type Worker struct {
 }
 
 func (w *Worker) runWorker() error {
-	time.Sleep(time.Duration(rand.Intn(40)) * time.Second)
-	fmt.Printf("Starting worker %s\n", w.workerID)
+	// fmt.Printf("[%s] Worker going to sleep %s\n", time.Now(), w.workerID)
+	time.Sleep(time.Duration(rand.Intn(15)) * time.Second)
+	// fmt.Printf("[%s] Starting worker %s\n", time.Now(), w.workerID)
 
 	var throttle <-chan time.Time
 	if w.config.qps > 0 {
@@ -153,19 +158,23 @@ func (w *Worker) makeRequest() error {
 			var resErr error
 
 			shouldInvoke := true
-			retryCount := 0
+			attempt := uint(1)
+			retryMultiplier := uint(1)
 
-			for shouldInvoke && retryCount <= numRetries {
-				// fmt.Printf("Invoking with retry %d\n", retryCount)
-				if retryCount > 0 {
-					time.Sleep(100 * time.Millisecond)
+			for shouldInvoke && attempt <= w.config.retry.MaxAttempts {
+				// fmt.Printf("Invoking with attempt %d\n", attempt)
+				if attempt > 1 {
+					sleepDuration := minDuration(w.config.retry.InitialBackoff*time.Duration(retryMultiplier), w.config.retry.MaxBackoff)
+					// fmt.Printf("Sleeping for %f ms\n", sleepDuration.Milliseconds())
+					time.Sleep(sleepDuration)
+					retryMultiplier *= w.config.retry.BackoffMultiplier
 				}
 
-				newCtx := context.WithValue(ctx, retryCountContextKey, retryCount)
+				newCtx := context.WithValue(ctx, attemptContextKey, attempt)
 				res, resErr = w.stub.InvokeRpc(newCtx, w.mtd, inputs[inputIdx])
 
 				shouldInvoke = resErr != nil && strings.Contains(resErr.Error(), "ResourceExhausted")
-				retryCount++
+				attempt++
 			}
 
 			if w.config.hasLog {
@@ -392,4 +401,11 @@ func (w *Worker) makeBidiRequest(ctx *context.Context, input []*dynamic.Message)
 	}
 
 	return nil
+}
+
+func minDuration(d1 time.Duration, d2 time.Duration) time.Duration {
+	if d1 < d2 {
+		return d1
+	}
+	return d2
 }

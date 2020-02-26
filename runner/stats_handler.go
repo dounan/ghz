@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 )
@@ -19,6 +18,8 @@ type statsHandler struct {
 
 	lock   sync.RWMutex
 	ignore bool
+
+	retry RetryConfig
 }
 
 // HandleConn handle the connection
@@ -50,15 +51,13 @@ func (c *statsHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 				st = s.Code().String()
 			}
 
-			retryCount := ctx.Value(retryCountContextKey)
-			if s.Code() != codes.ResourceExhausted || retryCount == numRetries {
-				c.results <- &callResult{rs.Error, st, duration, rs.EndTime}
+			attempt := ctx.Value(attemptContextKey).(uint)
+			c.results <- &callResult{rs.Error, st, duration, rs.EndTime, attempt, c.retry.MaxAttempts}
 
-				if c.hasLog {
-					c.log.Debugw("Received RPC Stats",
-						"statsID", c.id, "code", st, "error", rs.Error,
-						"duration", duration, "stats", rs)
-				}
+			if c.hasLog {
+				c.log.Debugw("Received RPC Stats",
+					"statsID", c.id, "code", st, "error", rs.Error,
+					"duration", duration, "stats", rs, "attempt", attempt)
 			}
 		}
 	}

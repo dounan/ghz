@@ -171,6 +171,23 @@ var (
 	cpus     = kingpin.Flag("cpus", "Number of cpu cores to use.").
 			Default(strconv.FormatUint(uint64(nCPUs), 10)).IsSetByUser(&isCPUSet).Uint()
 
+	// Retry
+	isInitialBackoffSet = false
+	initialBackoff      = kingpin.Flag("initial-backoff", "Initial backoff for retries. Default is 50ms.").
+				Default("50ms").IsSetByUser(&isInitialBackoffSet).Duration()
+
+	isMaxBackoffMsSet = false
+	maxBackoff        = kingpin.Flag("max-backoff", "Max backoff for retries. Default is 1s.").
+				Default("1s").IsSetByUser(&isMaxBackoffMsSet).Duration()
+
+	isBackoffMultiplierSet = false
+	backoffMultiplier      = kingpin.Flag("backoff-multiplier", "Backoff multiplier for retries. Default is 2.").
+				Default("2").IsSetByUser(&isBackoffMultiplierSet).Uint()
+
+	isMaxAttemptsSet = false
+	maxAttempts      = kingpin.Flag("max-attempts", "Number of attempts per request. Default is 1.").
+				Default("1").IsSetByUser(&isMaxAttemptsSet).Uint()
+
 	// Debug
 	isDebugSet = false
 	debug      = kingpin.Flag("debug", "The path to debug log file.").
@@ -245,6 +262,12 @@ func main() {
 		runner.WithStreamInterval(time.Duration(cfg.SI)),
 		runner.WithReflectionMetadata(cfg.ReflectMetadata),
 		runner.WithConnections(cfg.Connections),
+		runner.WithRetry(runner.RetryConfig{
+			InitialBackoff:    time.Duration(cfg.InitialBackoff),
+			MaxBackoff:        time.Duration(cfg.MaxBackoff),
+			BackoffMultiplier: cfg.BackoffMultiplier,
+			MaxAttempts:       cfg.MaxAttempts,
+		}),
 	)
 
 	if strings.TrimSpace(cfg.MetadataPath) != "" {
@@ -432,6 +455,10 @@ func createConfigFromArgs(cfg *config) error {
 	cfg.Tags = &tagsMap
 	cfg.ReflectMetadata = &rmdMap
 	cfg.Debug = *debug
+	cfg.InitialBackoff = Duration(*initialBackoff)
+	cfg.MaxBackoff = Duration(*maxBackoff)
+	cfg.BackoffMultiplier = *backoffMultiplier
+	cfg.MaxAttempts = *maxAttempts
 
 	return nil
 }
@@ -583,6 +610,22 @@ func mergeConfig(dest *config, src *config) error {
 
 	if isHostSet {
 		dest.Host = src.Host
+	}
+
+	if isInitialBackoffSet {
+		dest.InitialBackoff = src.InitialBackoff
+	}
+
+	if isMaxBackoffMsSet {
+		dest.MaxBackoff = src.MaxBackoff
+	}
+
+	if isBackoffMultiplierSet {
+		dest.BackoffMultiplier = src.BackoffMultiplier
+	}
+
+	if isMaxAttemptsSet {
+		dest.MaxAttempts = src.MaxAttempts
 	}
 
 	return nil
