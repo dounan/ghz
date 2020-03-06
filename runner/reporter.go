@@ -2,7 +2,9 @@ package runner
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -147,7 +149,8 @@ func (r *Reporter) Run() {
 		r.totalLatenciesSec += res.duration.Seconds()
 		r.statusCodeDist[res.status]++
 
-		if res.err != nil && res.maxAttempts == res.attempt {
+		fmt.Printf("[%s] !!! Result status %s\n", time.Now(), res.status)
+		if res.err != nil && (!strings.Contains(res.status, "ResourceExhausted") || res.maxAttempts == res.attempt) {
 			errStr = res.err.Error()
 			r.errorDist[errStr]++
 		}
